@@ -1,0 +1,190 @@
+@import "tailwindcss";
+
+@layer base {
+  :root {
+    --bg-paper: #F7F1E3;
+    --text-soil: #2B2016;
+    --text-soil-muted: #6E5D4F;
+    --primary-green: #2F5233;
+    --accent-gold: #D9A441;
+    --trader-terracotta: #8C4A2F;
+    --gov-teal: #1F6F78;
+    --card-paper: #FFFDF8;
+    --border-paper: #E2D7C1;
+  }
+
+  body {
+    background-color: #F7F1E3;
+    color: #2B2016;
+    font-family: 'Noto Sans', 'Noto Sans Devanagari', system-ui, -apple-system, sans-serif;
+  }
+
+  h1, h2, h3, h4, h5, h6 {
+    font-family: 'Baloo 2', 'Noto Sans Devanagari', 'Noto Sans', sans-serif;
+    color: #2B2016;
+  }
+}
+
+/* Custom font helper classes */
+.font-heading {
+  font-family: 'Baloo 2', 'Noto Sans Devanagari', 'Noto Sans', sans-serif;
+}
+
+.font-body {
+  font-family: 'Noto Sans', 'Noto Sans Devanagari', system-ui, sans-serif;
+}
+
+.font-mono-price, .price-ticker {
+  font-family: 'IBM Plex Mono', monospace;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Mandi Gate Pass & Ticket Stub Styles */
+.ticket-stub {
+  position: relative;
+  background-color: #FFFDF8;
+  border: 2px solid #DFD4BE;
+  /* 3 corners rounded, bottom-left notched/square */
+  border-radius: 1.75rem 1.75rem 1.75rem 0.375rem;
+  box-shadow: 0 4px 12px rgba(43, 32, 22, 0.05);
+  transition: all 0.25s ease;
+}
+
+.ticket-stub-farmer {
+  background-color: #FFFDF8;
+  border: 2px solid #2F5233;
+  border-radius: 2rem 2rem 2rem 0.5rem;
+}
+
+.ticket-stub-trader {
+  background-color: #FFFDF8;
+  border: 2px solid #8C4A2F;
+  border-radius: 2rem 2rem 2rem 0.5rem;
+}
+
+.ticket-stub-gov {
+  background-color: #FFFDF8;
+  border: 2px solid #1F6F78;
+  border-radius: 2rem 2rem 2rem 0.5rem;
+}
+
+/* Perforated tear line */
+.perforated-h {
+  position: relative;
+  border-top: 2px dashed #D6C8AC;
+}
+
+.perforated-h::before,
+.perforated-h::after {
+  content: '';
+  position: absolute;
+  top: -8px;
+  width: 14px;
+  height: 14px;
+  background-color: #F7F1E3;
+  border-radius: 50%;
+}
+
+.perforated-h::before {
+  left: -8px;
+}
+
+.perforated-h::after {
+  right: -8px;
+}
+
+/* Vertical Perforated Tear Line */
+.perforated-v {
+  position: relative;
+  border-left: 2px dashed #D6C8AC;
+}
+
+.perforated-v::before,
+.perforated-v::after {
+  content: '';
+  position: absolute;
+  left: -8px;
+  width: 14px;
+  height: 14px;
+  background-color: #F7F1E3;
+  border-radius: 50%;
+}
+
+.perforated-v::before {
+  top: -8px;
+}
+
+.perforated-v::after {
+  bottom: -8px;
+}
+
+/* Mandi Ink Stamp Badge */
+.mandi-stamp {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  border-radius: 9999px;
+  border-width: 2px;
+  border-style: solid;
+  font-family: 'Baloo 2', sans-serif;
+  text-transform: uppercase;
+  font-weight: 800;
+  letter-spacing: 0.05em;
+  transform: rotate(-3deg);
+  transition: transform 0.2s ease;
+}
+
+.ticket-stub:hover .mandi-stamp {
+  transform: rotate(0deg) scale(1.05);
+}
+
+.mandi-stamp-green {
+  border-color: #2F5233;
+  color: #2F5233;
+  background-color: rgba(47, 82, 51, 0.08);
+}
+
+.mandi-stamp-terracotta {
+  border-color: #8C4A2F;
+  color: #8C4A2F;
+  background-color: rgba(140, 74, 47, 0.08);
+}
+
+.mandi-stamp-teal {
+  border-color: #1F6F78;
+  color: #1F6F78;
+  background-color: rgba(31, 111, 120, 0.08);
+}
+
+.mandi-stamp-gold {
+  border-color: #D9A441;
+  color: #976D1F;
+  background-color: rgba(217, 164, 65, 0.12);
+}
+
+/* Card base styling */
+.mandi-card {
+  background-color: #FFFDF8;
+  border: 2px solid #E2D7C1;
+  border-radius: 1.5rem;
+  box-shadow: 0 2px 6px rgba(43, 32, 22, 0.04);
+}
+
+.mandi-card:hover {
+  border-color: #D3C5AB;
+}
+
+/* Material symbols adjustments */
+.material-symbols-outlined {
+  font-variation-settings: 'FILL' 0, 'wght' 450, 'GRAD' 0, 'opsz' 24;
+  vertical-align: middle;
+}
+
+.material-symbols-outlined.fill {
+  font-variation-settings: 'FILL' 1, 'wght' 450, 'GRAD' 0, 'opsz' 24;
+}
+
+.pb-safe {
+  padding-bottom: max(env(safe-area-inset-bottom, 0px), 12px);
+}

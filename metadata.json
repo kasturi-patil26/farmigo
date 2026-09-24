@@ -1,0 +1,7 @@
+{
+  "name": "FarmiGo",
+  "description": "Digital agriculture network connecting Farmers, Merchants, and Government with real-time mandi rates, AI forecasting, net profit calculation, and market intelligence.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
+
