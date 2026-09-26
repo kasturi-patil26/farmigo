@@ -183,6 +183,16 @@ export const FarmerMarketPrices: React.FC<FarmerMarketPricesProps> = ({
           <p className="text-sm md:text-base text-[#6E5D4F] font-medium mt-1 font-body">
             Single shared live APMC feed & verified distance-based market discovery.
           </p>
+          {cropSnapshot.source === 'live_agmarknet' && cropSnapshot.arrivalDate && (
+            <p className="text-xs text-[#6E5D4F]/80 font-body mt-0.5">
+              Prices as of{' '}
+              {new Date(cropSnapshot.arrivalDate).toLocaleDateString('en-IN', {
+                day: 'numeric',
+                month: 'short',
+                year: 'numeric',
+              })}
+            </p>
+          )}
         </div>
 
         {/* Commodity Selector (All 30 Maharashtra Crops) */}

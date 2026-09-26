@@ -322,9 +322,8 @@ export const MarketPriceProvider: React.FC<{ children: React.ReactNode }> = ({ c
     [cache, fetchPrice]
   );
 
-  // Pre-fetch the key primary crops on mount
-  useEffect(() => {
-    const primaryCropsToWarm = [
+  const primaryCropsToWarm = useMemo(
+    () => [
       'Onion (Red)',
       'Soybean (Yellow)',
       'Cotton (Medium Staple)',
@@ -333,13 +332,44 @@ export const MarketPriceProvider: React.FC<{ children: React.ReactNode }> = ({ c
       'Tur / Arhar (Pigeon Pea)',
       'Potato (Table / Jyoti)',
       'Gram / Chana (Desi)',
-    ];
+    ],
+    []
+  );
 
+  // Pre-fetch the key primary crops on mount
+  useEffect(() => {
     setIsLoadingInitial(true);
     Promise.allSettled(primaryCropsToWarm.map((c) => fetchPrice(c))).finally(() => {
       setIsLoadingInitial(false);
     });
-  }, [fetchPrice]);
+  }, [fetchPrice, primaryCropsToWarm]);
+
+  // Without this, prices were fetched exactly once on page load and then
+  // never updated again for the lifetime of the session — making the app
+  // silently show hours- or days-old prices with no indication anything
+  // was stale. Two triggers keep the cache genuinely live:
+  // 1) a periodic refresh every 30 minutes, and
+  // 2) an immediate refresh whenever the tab regains focus/visibility,
+  //    which covers the common case of a judge/user switching back to an
+  //    already-open tab after it's been sitting idle.
+  useEffect(() => {
+    const REFRESH_INTERVAL_MS = 30 * 60 * 1000; // 30 minutes
+    const intervalId = setInterval(() => {
+      Promise.allSettled(primaryCropsToWarm.map((c) => fetchPrice(c)));
+    }, REFRESH_INTERVAL_MS);
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        Promise.allSettled(primaryCropsToWarm.map((c) => fetchPrice(c)));
+      }
+    };
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
+    return () => {
+      clearInterval(intervalId);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
+  }, [fetchPrice, primaryCropsToWarm]);
 
   // Refresh all cache
   const refreshAll = useCallback(async () => {

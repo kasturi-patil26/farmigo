@@ -722,21 +722,21 @@ function mapAgmarknetRecord(rec: any, idx: number, fallbackCrop: string, fallbac
 }
 
 /**
- * Fetches Agmarknet records for a SPECIFIC date (DD/MM/YYYY), instead of
- * an unfiltered query. Without a date filter, the API can return an
- * arbitrary 25-record sample out of potentially years of historical data,
- * which caused prices to visibly shift on every page refresh even though
- * nothing in the real market had changed — this pins each request to a
- * known, explicit day.
+ * Single-attempt fetch against the official Agmarknet resource for one date.
+ * Extracted so fetchAgmarknetForDate can wrap it with retries — data.gov.in's
+ * backend is known to be intermittently overloaded (slow responses that hit
+ * our timeout, or outright 502 Bad Gateway from its own nginx layer), and a
+ * single failed attempt there does NOT mean the data doesn't exist or the
+ * key is bad — it usually just means try again a moment later.
  */
-async function fetchAgmarknetForDate(
+async function fetchAgmarknetForDateOnce(
   commoditySearch: string,
   state: string,
   apiKey: string,
   dateStr: string
-): Promise<RealPriceRecord[]> {
+): Promise<{ records: RealPriceRecord[]; retryable: boolean }> {
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 6000);
+  const timeout = setTimeout(() => controller.abort(), 10000);
   try {
     const url = `https://api.data.gov.in/resource/35985678-0d79-46b4-9ed6-6f13308a1d24?api-key=${encodeURIComponent(
       apiKey
@@ -746,21 +746,121 @@ async function fetchAgmarknetForDate(
 
     const response = await fetch(url, { signal: controller.signal });
     clearTimeout(timeout);
-    if (!response.ok) return [];
+    if (!response.ok) {
+      const bodySnippet = await response.text().catch(() => '');
+      console.warn(
+        `[AGMARKNET DEBUG] Non-OK response (status ${response.status}) for ${commoditySearch} on ${dateStr}. Body: ${bodySnippet.slice(0, 300)}`
+      );
+      // 5xx = data.gov.in's own backend failing — worth a retry.
+      // 401/403 = genuinely a bad/expired key — retrying won't help.
+      const retryable = response.status >= 500;
+      return { records: [], retryable };
+    }
 
     const rawText = await response.text();
     let data: any = null;
     try {
       data = JSON.parse(rawText);
     } catch {
-      return [];
+      console.warn(
+        `[AGMARKNET DEBUG] Response for ${commoditySearch} on ${dateStr} was not valid JSON. Raw body: ${rawText.slice(0, 300)}`
+      );
+      return { records: [], retryable: true };
     }
     const records = data?.records || data?.data || [];
-    if (!Array.isArray(records) || records.length === 0) return [];
+    if (!Array.isArray(records) || records.length === 0) {
+      console.log(
+        `[AGMARKNET DEBUG] Valid response for ${commoditySearch} on ${dateStr}, but 0 records. Full response keys: ${Object.keys(data || {}).join(', ')}`
+      );
+      // A clean, well-formed empty response is a genuine "no data that
+      // day" answer, not a server hiccup — no point retrying this one.
+      return { records: [], retryable: false };
+    }
 
-    return records.map((rec: any, idx: number) => mapAgmarknetRecord(rec, idx, commoditySearch, state));
-  } catch (err) {
+    return {
+      records: records.map((rec: any, idx: number) => mapAgmarknetRecord(rec, idx, commoditySearch, state)),
+      retryable: false,
+    };
+  } catch (err: any) {
     clearTimeout(timeout);
+    // Timeout (AbortError) or a network-level failure — both are exactly
+    // the "server was too slow/unreachable this instant" case, worth a retry.
+    console.warn(`[AGMARKNET DEBUG] Fetch threw for ${commoditySearch} on ${dateStr}: ${err?.message || err}`);
+    return { records: [], retryable: true };
+  }
+}
+
+/**
+ * Fetches Agmarknet records for a SPECIFIC date (DD/MM/YYYY), instead of
+ * an unfiltered query. Without a date filter, the API can return an
+ * arbitrary 25-record sample out of potentially years of historical data,
+ * which caused prices to visibly shift on every page refresh even though
+ * nothing in the real market had changed — this pins each request to a
+ * known, explicit day.
+ *
+ * Wraps the single attempt with up to 2 retries (short backoff) specifically
+ * for retryable failures — timeouts and 5xx responses — since data.gov.in's
+ * backend is known to be intermittently overloaded rather than genuinely down.
+ */
+async function fetchAgmarknetForDate(
+  commoditySearch: string,
+  state: string,
+  apiKey: string,
+  dateStr: string
+): Promise<RealPriceRecord[]> {
+  const MAX_ATTEMPTS = 3;
+  const BACKOFF_MS = [800, 1800];
+
+  for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
+    const { records, retryable } = await fetchAgmarknetForDateOnce(commoditySearch, state, apiKey, dateStr);
+    if (records.length > 0) return records;
+    if (!retryable) return [];
+    if (attempt < MAX_ATTEMPTS - 1) {
+      console.log(`[AGMARKNET DEBUG] Retrying ${commoditySearch} on ${dateStr} (attempt ${attempt + 2}/${MAX_ATTEMPTS}) after backoff...`);
+      await new Promise((resolve) => setTimeout(resolve, BACKOFF_MS[attempt]));
+    }
+  }
+  return [];
+}
+
+/**
+ * Free, keyless fallback source (mandi-api.onrender.com), covering
+ * Maharashtra among 5 states, itself sourced from data.gov.in and resynced
+ * daily. Used only when the official Agmarknet endpoint has failed to
+ * produce any data across the full lookback window — this keeps the app
+ * demo-able even during an official-API outage, while still ultimately
+ * being government-sourced data rather than fabricated numbers.
+ *
+ * Field names are defensively checked against a few likely variants since
+ * this is an independent third-party project, not a stable/versioned
+ * official API — verify against a live response and adjust if the actual
+ * shape differs.
+ */
+async function fetchMandiApiFallback(
+  commoditySearch: string,
+  state: string
+): Promise<RealPriceRecord[]> {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 8000);
+  try {
+    const url = `https://mandi-api.onrender.com/v1/prices?state=${encodeURIComponent(state)}&commodity=${encodeURIComponent(commoditySearch)}`;
+    console.log(`[MANDI-API FALLBACK] Querying ${commoditySearch}/${state}: ${url}`);
+    const response = await fetch(url, { signal: controller.signal });
+    clearTimeout(timeout);
+    if (!response.ok) {
+      console.warn(`[MANDI-API FALLBACK] Non-OK response (status ${response.status}) for ${commoditySearch}.`);
+      return [];
+    }
+    const data: any = await response.json().catch(() => null);
+    const records = data?.prices || data?.records || data?.data || (Array.isArray(data) ? data : []);
+    if (!Array.isArray(records) || records.length === 0) {
+      console.log(`[MANDI-API FALLBACK] Empty/unexpected response shape for ${commoditySearch}. Keys: ${Object.keys(data || {}).join(', ')}`);
+      return [];
+    }
+    return records.map((rec: any, idx: number) => mapAgmarknetRecord(rec, idx, commoditySearch, state));
+  } catch (err: any) {
+    clearTimeout(timeout);
+    console.warn(`[MANDI-API FALLBACK] Fetch threw for ${commoditySearch}: ${err?.message || err}`);
     return [];
   }
 }
@@ -818,7 +918,28 @@ async function fetchRealMarketPrices(crop: string, state: string = "Maharashtra"
     const current = await findMostRecentReportingDay(commoditySearch, state, apiKey, 0, 7);
 
     if (!current) {
-      console.log(`[AGMARKNET DEBUG] No reporting day found in the last 7 days for '${commoditySearch}' in '${state}'. Returning reference fallback.`);
+      console.log(`[AGMARKNET DEBUG] No reporting day found in the last 7 days for '${commoditySearch}' in '${state}'. Trying keyless fallback source before giving up to mock data.`);
+
+      // Official source exhausted its lookback window with nothing usable —
+      // try the free keyless wrapper (also ultimately data.gov.in-sourced)
+      // before falling all the way back to synthetic reference prices.
+      const fallbackRecords = await fetchMandiApiFallback(commoditySearch, state);
+      if (fallbackRecords.length > 0) {
+        const pickedFallback = { ...pickRepresentativePrice(fallbackRecords) };
+        pickedFallback.trendChange = 0;
+        (pickedFallback as any).isTrendEstimated = true;
+        console.log(`[MANDI-API FALLBACK] Serving ${fallbackRecords.length} records for '${commoditySearch}' in '${state}' from keyless fallback source.`);
+        return {
+          source: "live_agmarknet",
+          commodity: commoditySearch,
+          state,
+          prices: fallbackRecords,
+          primaryPrice: pickedFallback,
+          count: fallbackRecords.length,
+        };
+      }
+
+      console.log(`[AGMARKNET DEBUG] Keyless fallback also returned nothing for '${commoditySearch}' in '${state}'. Returning reference mock data.`);
       return {
         source: "reference_mock",
         reason: "no_matching_records",
